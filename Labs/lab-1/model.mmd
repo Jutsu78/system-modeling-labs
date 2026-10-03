@@ -1,0 +1,55 @@
+erDiagram
+    Customer ||--o{ Order : "places"
+    Order ||--|{ OrderItem : "contains"
+    Book ||--o{ OrderItem : "included_in"
+    Book }|--o{ Author : "written_by"
+    Order ||--o| Shipment : "shipped_via"
+
+    Customer {
+        UUID id PK
+        string email
+        string phone
+        string full_name
+        boolean club_member_status
+        timestamp created_at
+    }
+
+    Author {
+        UUID id PK
+        string full_name
+        string bio
+    }
+
+    Book {
+        UUID id PK
+        string isbn
+        string title
+        integer publication_year
+        decimal price
+        integer stock_quantity
+    }
+
+    Order {
+        UUID id PK
+        UUID customer_id FK
+        timestamp order_date
+        string status
+    }
+
+    OrderItem {
+        UUID id PK
+        UUID order_id FK
+        UUID book_id FK
+        integer quantity
+        decimal unit_price
+    }
+
+    Shipment {
+        UUID id PK
+        UUID order_id FK
+        string carrier
+        string tracking_number
+        string delivery_address
+        timestamp shipped_at
+        string delivery_status
+    }
