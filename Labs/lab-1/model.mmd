@@ -2,7 +2,7 @@ erDiagram
     Customer ||--o{ Order : "places"
     Order ||--|{ OrderItem : "contains"
     Book ||--o{ OrderItem : "included_in"
-    Book }o--o{ Author : "written_by"
+    Book }|--o{ Author : "written_by"
     Order ||--o| Shipment : "shipped_via"
 
     Customer {
@@ -34,10 +34,10 @@ erDiagram
         UUID customer_id FK
         timestamp order_date
         string status
-        decimal total_amount
     }
 
     OrderItem {
+        UUID id PK
         UUID order_id FK
         UUID book_id FK
         integer quantity
