@@ -7,14 +7,14 @@ flowchart LR
 
     %% Актори: Користувачі (Люди)
     subgraph Users ["Користувачі (Людина)"]
-        Customer["fa:fa-user Customer<br/>(Покупець)"]:::humanActor
-        ClubMember["fa:fa-id-card ClubMember<br/>(Член клубу)"]:::humanActor
-        StoreManager["fa:fa-user-tie StoreManager<br/>(Менеджер книгарні)"]:::humanActor
+        Customer["Customer<br/>(Покупець)"]:::humanActor
+        ClubMember["ClubMember<br/>(Член клубу)"]:::humanActor
+        StoreManager["StoreManager<br/>(Менеджер книгарні)"]:::humanActor
     end
 
     %% Зовнішні системи
     subgraph ExternalSystems ["Зовнішні сервіси"]
-        CarrierService["fa:fa-truck CarrierService<br/>(API Поштового оператора)"]:::systemActor
+        CarrierService["CarrierService<br/>(API Поштового оператора)"]:::systemActor
     end
 
     %% Межа системи онлайн-книгарні
@@ -40,10 +40,9 @@ flowchart LR
     StoreManager --- UC05
 
     %% Зв'язки між прецедентами (include / extend)
-    UC02 -. "<<include>>" .-> UC03
-    UC04 -. "<<extend>>" .-> UC02
+    UC02 -. "«include»" .-> UC03
+    UC04 -. "«extend»<br/>[club_member_status = true]" .-> UC02
 
     %% Взаємодія із зовнішньою системою
     UC05 --- CarrierService
     UC06 --- CarrierService
-
