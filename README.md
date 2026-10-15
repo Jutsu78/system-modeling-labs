@@ -9,3 +9,4 @@
 
 ## Структура репозиторію
 * `Labs/lab-1/` — Домен і модель даних (ER)
+* `Labs/lab-2/` — Вимоги та Use Cases (EARS + User Stories + Gherkin)
