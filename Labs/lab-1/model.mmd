@@ -2,7 +2,7 @@ erDiagram
     Customer ||--o{ Order : "places"
     Order ||--|{ OrderItem : "contains"
     Book ||--o{ OrderItem : "included_in"
-    Book }|--o{ Author : "written_by"
+    Book }o--|{ Author : "written_by"
     Order ||--o| Shipment : "shipped_via"
 
     Customer {
