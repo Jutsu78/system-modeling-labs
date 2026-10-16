@@ -1,0 +1,48 @@
+flowchart LR
+    %% Стилі акторів та прецедентів
+    classDef humanActor fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,rx:5px,ry:5px;
+    classDef systemActor fill:#fff3e0,stroke:#f57c00,stroke-width:2px,rx:5px,ry:5px;
+    classDef useCase fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef extUseCase fill:#ede7f6,stroke:#512da8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    %% Актори: Користувачі (Люди)
+    subgraph Users ["Користувачі (Людина)"]
+        Customer["Customer<br/>(Покупець)"]:::humanActor
+        ClubMember["ClubMember<br/>(Член клубу)"]:::humanActor
+        StoreManager["StoreManager<br/>(Менеджер книгарні)"]:::humanActor
+    end
+
+    %% Зовнішні системи
+    subgraph ExternalSystems ["Зовнішні сервіси"]
+        CarrierService["CarrierService<br/>(API Поштового оператора)"]:::systemActor
+    end
+
+    %% Межа системи онлайн-книгарні
+    subgraph SystemBoundary ["Система Онлайн-книгарні «Клуб читачів»"]
+        UC01(["UC-01: Пошук та перегляд книг у каталозі"]):::useCase
+        UC02(["UC-02: Оформлення замовлення на книги"]):::useCase
+        UC03(["UC-03: Перевірка наявності книг на складі"]):::useCase
+        UC04(["UC-04: Застосування клубної ціни"]):::extUseCase
+        UC05(["UC-05: Реєстрація поштового відправлення та ТТН"]):::useCase
+        UC06(["UC-06: Відстеження статусу замовлення та доставки"]):::useCase
+    end
+
+    %% Узагальнення акторів (Generalization: ClubMember is-a Customer)
+    ClubMember -- "|> узагальнення (is-a)" --> Customer
+
+    %% Зв'язки Акторів з прецедентами
+    Customer --- UC01
+    Customer --- UC02
+    Customer --- UC06
+
+    ClubMember --- UC04
+
+    StoreManager --- UC05
+
+    %% Зв'язки між прецедентами (include / extend)
+    UC02 -. "«include»" .-> UC03
+    UC04 -. "«extend»<br/>[club_member_status = true]" .-> UC02
+
+    %% Взаємодія із зовнішньою системою
+    UC05 --- CarrierService
+    UC06 --- CarrierService
