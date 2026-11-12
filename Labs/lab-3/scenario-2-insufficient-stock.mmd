@@ -1,0 +1,44 @@
+sequenceDiagram
+    autonumber
+    actor Customer as Покупець<br/>(Customer)
+    participant OrderController as OrderController<br/>(REST API)
+    participant OrderService as OrderService<br/>(Бізнес-логіка)
+    participant CustomerRepository as CustomerRepository<br/>(Customer)
+    participant BookRepository as BookRepository<br/>(Book)
+    participant OrderRepository as OrderRepository<br/>(Order, OrderItem)
+
+    Note over Customer, OrderRepository: Прецедент UC-02: Сценарій 2 — Відмова через брак на складі (REQ-02, NFR-02)
+
+    Customer->>+OrderController: submitOrder(customerId, items: [{bookId, quantity: 3}])
+    OrderController->>+OrderService: placeOrder(customerId, items)
+
+    OrderService->>+CustomerRepository: findById(customerId)
+    CustomerRepository-->>-OrderService: Customer(id, email, phone, full_name, club_member_status=false)
+
+    Note over OrderService: Початок транзакції @Transactional(isolation = REPEATABLE_READ) [NFR-02]
+
+    loop Для кожного рядка замовлення (UC-03: «include» Перевірка наявності)
+        OrderService->>+BookRepository: findByIdForUpdate(bookId)
+        BookRepository-->>-OrderService: Book(id, title="Ворошиловград", price=350.00, stock_quantity=2)
+
+        alt stock_quantity >= quantity (Умова наявності: 2 >= 3 — Хибно)
+            OrderService->>BookRepository: updateStockQuantity(bookId, newStock)
+        else stock_quantity < quantity (Брак товару на складі: 2 < 3 [REQ-02])
+            Note over OrderService: Запитана кількість (3) перевищує доступний залишок (2)
+            OrderService->>OrderService: recordStockDeficit(bookId, requested=3, available=2)
+        end
+
+        opt hasStockDeficit == true (Виявлено нестачу товару)
+            Note over OrderService: Блокування формування замовлення: OrderItem не створюється [REQ-02]
+        end
+    end
+
+    opt hasStockDeficit == true (Неможливість підтвердження замовлення)
+        Note over OrderService, OrderRepository: Замовлення НЕ переходить у статус "confirmed", запис Order не зберігається
+        Note over BookRepository: Відкат транзакції (ROLLBACK): Book.stock_quantity залишається рівним 2 [REQ-02]
+        OrderService->>OrderService: rollbackTransaction()
+        OrderService->>OrderService: logStockAlert(bookId, "Stock deficit: requested 3, available 2")
+    end
+
+    OrderService-->>-OrderController: throw InsufficientStockException("Запитана кількість (3) перевищує доступний залишок (2)")
+    OrderController-->>-Customer: HTTP 422 Unprocessable Entity ("Запитана кількість (3) перевищує доступний залишок (2)")
