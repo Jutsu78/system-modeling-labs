@@ -1,0 +1,76 @@
+sequenceDiagram
+    autonumber
+    actor Customer as Покупець<br/>(Customer)
+    participant OrderController as OrderController<br/>(REST API)
+    participant OrderService as OrderService<br/>(Бізнес-логіка)
+    participant CustomerRepository as CustomerRepository<br/>(Customer)
+    participant BookRepository as BookRepository<br/>(Book)
+    participant OrderRepository as OrderRepository<br/>(Order, OrderItem)
+
+    Note over Customer, OrderRepository: Прецедент UC-02: Сценарій 2 — Відмова через брак на складі (REQ-02, NFR-02)
+
+    Customer->>OrderController: submitOrder(customerId, items: [{bookId, quantity: 3}])
+    activate OrderController
+    OrderController->>OrderService: placeOrder(customerId, items)
+    activate OrderService
+
+    OrderService->>CustomerRepository: findById(customerId)
+    activate CustomerRepository
+    CustomerRepository-->>OrderService: Customer(id, email, phone, full_name, club_member_status=false)
+    deactivate CustomerRepository
+
+    OrderService->>OrderService: beginTransaction(REPEATABLE_READ)
+    Note over OrderService: Початок транзакції з рівнем ізоляції REPEATABLE READ [NFR-02]
+
+    loop Для кожного рядка замовлення (UC-03: «include» Перевірка наявності)
+        activate BookRepository
+        OrderService->>BookRepository: findByIdForUpdate(bookId)
+        BookRepository-->>OrderService: Book(id, title="Ворошиловград", price=350.00, stock_quantity=2)
+
+        alt stock_quantity >= quantity (Умова наявності: 2 >= 3 — Хибно)
+            OrderService->>BookRepository: updateStockQuantity(bookId, newStock)
+            BookRepository-->>OrderService: true (Залишок оновлено)
+        else stock_quantity < quantity (Брак товару на складі: 2 < 3 [REQ-02])
+            Note over OrderService: Запитана кількість (3) перевищує доступний залишок (2) [REQ-02]
+            OrderService->>OrderService: recordStockDeficit(bookId, requested=3, available=2)
+            OrderService->>BookRepository: releaseRowLock(bookId)
+            BookRepository-->>OrderService: false
+        end
+        deactivate BookRepository
+
+        alt club_member_status == true (UC-04: Застосування клубної знижки 15%)
+            OrderService->>OrderService: calculateClubPrice(basePrice=350.00, discount=0.15)
+            Note over OrderService: Розрахунок клубної вартості: 350.00 * (1 - 0.15) = 297.50 [REQ-04]
+        else club_member_status == false (Стандартна каталожна ціна)
+            OrderService->>OrderService: assignStandardPrice(basePrice=350.00)
+            Note over OrderService: Базова ціна: unit_price = Book.price = 350.00 [REQ-03, REQ-07]
+        end
+    end
+
+    activate OrderRepository
+    alt hasStockDeficit == false (Усі позиції зарезервовано)
+        OrderService->>OrderRepository: saveOrder(Order(id, customer_id, order_date=now(), status="pending"))
+        OrderRepository-->>OrderService: Order(id, customer_id, order_date, status="pending")
+
+        loop Збереження позицій замовлення (Зв'язок Order ||--|{ OrderItem)
+            OrderService->>OrderRepository: saveOrderItem(OrderItem(id, order_id, book_id, quantity, unit_price))
+            OrderRepository-->>OrderService: OrderItem(...)
+        end
+
+        OrderService->>OrderRepository: updateOrderStatus(orderId, status="confirmed")
+        OrderRepository-->>OrderService: Order(id, status="confirmed")
+
+        OrderService->>OrderService: commitTransaction()
+    else hasStockDeficit == true (Виявлено дефіцит на складі)
+        Note over OrderService, OrderRepository: Замовлення НЕ створюється, Order.status не переходить у confirmed [REQ-02]
+        Note over BookRepository: Відкат транзакції (ROLLBACK): Book.stock_quantity залишається рівним 2 [REQ-02, NFR-02]
+        OrderService->>OrderRepository: auditRejectedOrder(customerId, reason="INSUFFICIENT_STOCK")
+        OrderRepository-->>OrderService: false
+        OrderService->>OrderService: rollbackTransaction()
+    end
+    deactivate OrderRepository
+
+    OrderService-->>OrderController: throw InsufficientStockException("Запитана кількість (3) перевищує доступний залишок (2)")
+    deactivate OrderService
+    OrderController-->>Customer: HTTP 422 Unprocessable Entity ("Запитана кількість (3) перевищує доступний залишок (2)")
+    deactivate OrderController

@@ -1,0 +1,73 @@
+sequenceDiagram
+    autonumber
+    actor Customer as Покупець<br/>(Customer)
+    participant OrderController as OrderController<br/>(REST API)
+    participant OrderService as OrderService<br/>(Бізнес-логіка)
+    participant CustomerRepository as CustomerRepository<br/>(Customer)
+    participant BookRepository as BookRepository<br/>(Book)
+    participant OrderRepository as OrderRepository<br/>(Order, OrderItem)
+
+    Note over Customer, OrderRepository: Прецедент UC-02: Сценарій 1 — Успішне оформлення замовлення (REQ-02, REQ-03, REQ-07, NFR-02)
+
+    Customer->>OrderController: submitOrder(customerId, items: [{bookId, quantity: 2}])
+    activate OrderController
+    OrderController->>OrderService: placeOrder(customerId, items)
+    activate OrderService
+
+    OrderService->>CustomerRepository: findById(customerId)
+    activate CustomerRepository
+    CustomerRepository-->>OrderService: Customer(id, email, phone, full_name, club_member_status=false)
+    deactivate CustomerRepository
+
+    OrderService->>OrderService: beginTransaction(REPEATABLE_READ)
+    Note over OrderService: Початок транзакції з рівнем ізоляції REPEATABLE READ [NFR-02]
+
+    loop Для кожного рядка замовлення (UC-03: «include» Перевірка та резервування)
+        activate BookRepository
+        OrderService->>BookRepository: findByIdForUpdate(bookId)
+        BookRepository-->>OrderService: Book(id, title="Інтернат", price=300.00, stock_quantity=5)
+
+        alt stock_quantity >= quantity (5 >= 2: Достатня кількість на складі)
+            OrderService->>BookRepository: updateStockQuantity(bookId, newStock=3)
+            BookRepository-->>OrderService: true (Залишок успішно зменшено до 3)
+        else stock_quantity < quantity (Брак товару на складі)
+            OrderService->>OrderService: recordStockDeficit(bookId, requested=2, available=5)
+            OrderService->>BookRepository: releaseRowLock(bookId)
+            BookRepository-->>OrderService: false
+        end
+        deactivate BookRepository
+
+        alt club_member_status == true (UC-04: Застосування клубної знижки 15%)
+            OrderService->>OrderService: calculateClubPrice(basePrice=300.00, discount=0.15)
+            Note over OrderService: Розрахунок клубної вартості: 300.00 * (1 - 0.15) = 255.00 [REQ-04]
+        else club_member_status == false (Стандартна каталожна ціна)
+            OrderService->>OrderService: assignStandardPrice(basePrice=300.00)
+            Note over OrderService: Фіксація: unit_price = Book.price = 300.00 [REQ-03, REQ-07]
+        end
+    end
+
+    activate OrderRepository
+    alt hasStockDeficit == false (Усі позиції зарезервовано)
+        OrderService->>OrderRepository: saveOrder(Order(id, customer_id, order_date=now(), status="pending"))
+        OrderRepository-->>OrderService: Order(id, customer_id, order_date, status="pending")
+
+        loop Збереження позицій замовлення (Зв'язок Order ||--|{ OrderItem)
+            OrderService->>OrderRepository: saveOrderItem(OrderItem(id, order_id, book_id, quantity=2, unit_price=300.00))
+            OrderRepository-->>OrderService: OrderItem(id, order_id, book_id, quantity=2, unit_price=300.00)
+        end
+
+        OrderService->>OrderRepository: updateOrderStatus(orderId, status="confirmed")
+        OrderRepository-->>OrderService: Order(id, status="confirmed")
+
+        OrderService->>OrderService: commitTransaction()
+    else hasStockDeficit == true (Виявлено дефіцит на складі)
+        OrderService->>OrderRepository: auditRejectedOrder(customerId, reason="INSUFFICIENT_STOCK")
+        OrderRepository-->>OrderService: false
+        OrderService->>OrderService: rollbackTransaction()
+    end
+    deactivate OrderRepository
+
+    OrderService-->>OrderController: OrderResponse(id, status="confirmed", items=[{quantity: 2, unit_price: 300.00}])
+    deactivate OrderService
+    OrderController-->>Customer: HTTP 201 Created (OrderDetails: id, status="confirmed", items=[{quantity: 2, unit_price: 300.00}])
+    deactivate OrderController
